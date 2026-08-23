@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "iamstarcode.football",
+  "name": "Football Scores",
+  "version": "0.3.0",
+  "author": "iamstarcode",
+  "license": "MIT",
+  "description": "Live football scores and upcoming fixtures for your chosen league, powered by ESPN's public API.",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "BarWidget.qml" },
+  "barWidget": {
+    "displayName": "Football Scores",
+    "description": "League scores and fixtures from ESPN",
+    "category": "Sports",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
