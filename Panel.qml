@@ -5,9 +5,9 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// iamstarcode.football — scores popover. Anchored to the bar chip by
-// KeyboardPanel; lists today's matches plus the week ahead for the selected
-// league, refreshing every 60s from ESPN via football.py.
+// iamstarcode.football — livescore-style popover. One day at a time, grouped
+// by competition, with ‹ › arrows and a day strip to move between dates.
+// Refreshes every 60s from ESPN via football.py.
 Panel {
   id: root
   moduleName: "iamstarcode.football"
@@ -17,16 +17,16 @@ Panel {
   property var hostWidget: null
 
   // ---- data ----------------------------------------------------------------
-  property var rows: []
+  property var groups: []
   property var displayRows: []
   property string errorMessage: ""
   property string updatedAt: ""
-  property string leagueCode: "eng.1"
-  property int leagueIndex: 0
+  property string selectedDate: Model.todayIso()
 
-  readonly property bool liveNow: Model.liveRow(rows) !== null
-  readonly property string tooltipLabel: Model.tooltipLabel(rows)
+  readonly property bool liveNow: Model.liveRow(groups) !== null
+  readonly property string tooltipLabel: Model.tooltipLabel(groups)
   readonly property string helperPath: Qt.resolvedUrl("football.py").toString().replace("file://", "")
+  readonly property bool viewingToday: selectedDate === Model.todayIso()
 
   function open() {
     root.controller.show()
@@ -55,21 +55,19 @@ Panel {
       return
     }
     root.errorMessage = ""
-    root.rows = Model.sortRows(Model.parseEvents(payload))
-    root.displayRows = Model.buildDisplayRows(root.rows, new Date())
+    root.groups = Model.parseGroups(payload)
+    root.displayRows = Model.buildDisplayRows(root.groups)
     root.updatedAt = String(payload.updated || "").substring(11, 16)
   }
 
-  function selectLeague(index) {
-    if (index < 0 || index >= Model.LEAGUES.length || index === root.leagueIndex) return
-    root.leagueIndex = index
-    root.leagueCode = Model.LEAGUES[index].code
-    writeConfig()
+  function selectDate(iso) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || iso === root.selectedDate) return
+    root.selectedDate = iso
     root.refresh()
   }
 
-  function writeConfig() {
-    configFile.setText(JSON.stringify({ league: root.leagueCode }, null, 2) + "\n")
+  function shiftDate(days) {
+    root.selectDate(Model.addDays(root.selectedDate, days))
   }
 
   function openMatch(row) {
@@ -87,38 +85,10 @@ Panel {
 
   Process {
     id: fetchProc
-    command: ["python3", root.helperPath]
+    command: ["python3", root.helperPath, root.selectedDate]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyPayload(text)
-    }
-  }
-
-  FileView {
-    id: configFile
-    path: Quickshell.env("HOME") + "/.config/omarchy/iamstarcode.football.json"
-    watchChanges: true
-    atomicWrites: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: {
-      try {
-        var parsed = JSON.parse(String(text() || "{}"))
-        var code = parsed && parsed.league ? String(parsed.league) : "eng.1"
-        if (code === root.leagueCode) return
-        var index = -1
-        for (var i = 0; i < Model.LEAGUES.length; i++)
-          if (Model.LEAGUES[i].code === code) { index = i; break }
-        root.leagueIndex = index >= 0 ? index : 0
-        root.leagueCode = Model.LEAGUES[root.leagueIndex].code
-        root.refresh()
-      } catch (e) {}
-    }
-    onLoadFailed: {
-      root.leagueIndex = 0
-      root.leagueCode = "eng.1"
-      writeConfig()
-      root.refresh()
     }
   }
 
@@ -163,7 +133,7 @@ Panel {
             width: parent.width - panelActions.width - parent.spacing
             spacing: 1
             Text {
-              text: "FOOTBALL · " + Model.leagueLabel(root.leagueCode).toUpperCase()
+              text: "FOOTBALL · " + Model.dayLabel(root.selectedDate, new Date()).toUpperCase()
               color: Color.accent
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.caption
@@ -198,45 +168,78 @@ Panel {
           }
         }
 
-        Rectangle { width: parent.width; height: 1; color: Util.alpha(Color.accent, 0.4) }
-
-        // League picker
-        Flow {
+        // Date navigation: ‹ [strip] › Today
+        Row {
           width: parent.width
           spacing: Style.space(3)
-          Repeater {
-            model: Model.LEAGUES
-            delegate: Button {
-              required property var modelData
-              required property int index
-              text: modelData.label
-              fontSize: Style.font.caption
-              selected: root.leagueIndex === index
-              active: root.leagueIndex === index
-              bordered: true
-              foreground: root.barForeground
-              accent: Color.accent
-              onClicked: root.selectLeague(index)
+
+          Button {
+            iconText: "‹"
+            foreground: root.barForeground
+            tooltipText: "Previous day"
+            onClicked: root.shiftDate(-1)
+          }
+
+          Row {
+            id: strip
+            spacing: Style.space(2)
+
+            Repeater {
+              model: 7
+
+              delegate: Button {
+                required property int index
+                readonly property string chipDate: Model.addDays(root.selectedDate, index - 3)
+
+                text: Model.chipLabel(chipDate, new Date())
+                fontSize: Style.font.caption
+                selected: index === 3
+                active: index === 3
+                bordered: true
+                foreground: root.barForeground
+                accent: Color.accent
+                onClicked: root.selectDate(chipDate)
+              }
             }
+          }
+
+          Button {
+            iconText: "›"
+            foreground: root.barForeground
+            tooltipText: "Next day"
+            onClicked: root.shiftDate(1)
+          }
+
+          Button {
+            text: "Today"
+            fontSize: Style.font.caption
+            selected: root.viewingToday
+            active: root.viewingToday
+            bordered: true
+            foreground: root.barForeground
+            accent: Color.accent
+            visible: !root.viewingToday
+            onClicked: root.selectDate(Model.todayIso())
           }
         }
 
-        Rectangle { width: parent.width; height: 1; color: Util.alpha(root.barForeground, 0.18) }
+        Rectangle { width: parent.width; height: 1; color: Util.alpha(Color.accent, 0.4) }
 
-        // Matches
+        // Matches grouped by competition
         Repeater {
           model: root.displayRows
 
           delegate: Item {
             required property var modelData
             width: contentColumn.width
-            height: modelData.type === "day" ? dayLabel.implicitHeight : matchRow.height
+            height: modelData.type === "league" ? leagueLabel.implicitHeight
+                  : modelData.type === "match" ? matchRow.height : 0
 
             Text {
-              id: dayLabel
-              visible: modelData.type === "day"
-              text: modelData.label
-              color: Util.alpha(root.barForeground, 0.55)
+              id: leagueLabel
+              visible: modelData.type === "league"
+              text: modelData.label.toUpperCase()
+              color: modelData.live ? Color.accent : Util.alpha(root.barForeground, 0.55)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: 10
               font.bold: true
@@ -319,8 +322,8 @@ Panel {
 
         Text {
           width: parent.width
-          visible: root.rows.length === 0
-          text: root.errorMessage !== "" ? root.errorMessage : "No matches in the next 7 days."
+          visible: root.groups.length === 0
+          text: root.errorMessage !== "" ? root.errorMessage : "No matches on this day."
           color: Util.alpha(root.barForeground, 0.65)
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: 11

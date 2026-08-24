@@ -79,6 +79,7 @@ BarWidget {
     labelVisible: true
     tooltipText: root.panelTooltip
     active: root.opened || root.liveNow
+    useActiveColor: false
 
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.MiddleButton) root.refresh()

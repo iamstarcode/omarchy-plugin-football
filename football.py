@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""Fetch and normalize today's football fixtures for iamstarcode.football."""
+"""Fetch and normalize one day of football fixtures (all competitions) for iamstarcode.football."""
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date as date_cls
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "omarchy" / "iamstarcode.football.json"
-API_ROOT = "https://site.api.espn.com/apis/site/v2/sports/soccer"
-USER_AGENT = "iamstarcode-football/0.3 (+https://github.com/iamstarcode/omarchy-plugin-football)"
+API_ROOT = "https://site.web.api.espn.com/apis/v2/scoreboard/header"
+USER_AGENT = "iamstarcode-football/0.4 (+https://github.com/iamstarcode/omarchy-plugin-football)"
 MAX_RESPONSE_BYTES = 12_000_000
-DEFAULT_LEAGUE = "eng.1"
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class HTTPSOnlyRedirectHandler(HTTPRedirectHandler):
@@ -43,32 +45,27 @@ def fetch_json(url: str) -> dict:
     return payload
 
 
-def load_config() -> dict:
+def parse_date(raw: str | None) -> date_cls:
+    text = str(raw or "").strip()
+    if text and not DATE_RE.match(text):
+        raise ValueError("Date must look like YYYY-MM-DD")
+    if not text:
+        return datetime.now().astimezone().date()
     try:
-        payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, json.JSONDecodeError) as error:
-        raise ValueError(f"Could not read {CONFIG_PATH}: {error}") from error
-    if not isinstance(payload, dict):
-        raise ValueError("Config must be a JSON object")
-    return payload
+        return date_cls.fromisoformat(text)
+    except ValueError as error:
+        raise ValueError(f"Invalid date {text!r}") from error
 
 
 def team_snapshot(competitor: dict) -> dict[str, str]:
-    team = competitor.get("team", {})
-    logos = team.get("logos", []) if isinstance(team, dict) else []
-    logo = str(team.get("logo") or "")
-    if not logo and logos and isinstance(logos[0], dict):
-        logo = str(logos[0].get("href") or "")
+    team = competitor.get("team", {}) or {}
     return {
-        "id": str(team.get("id") or competitor.get("id") or ""),
-        "name": str(team.get("displayName") or team.get("name") or "Team"),
-        "shortName": str(team.get("shortDisplayName") or team.get("displayName") or "Team"),
-        "abbreviation": str(team.get("abbreviation") or "").upper(),
-        "logo": logo,
+        "id": str(competitor.get("id") or team.get("id") or ""),
+        "name": str(competitor.get("displayName") or team.get("displayName") or competitor.get("name") or "Team"),
+        "shortName": str(competitor.get("shortDisplayName") or competitor.get("displayName") or "Team"),
+        "abbreviation": str(competitor.get("abbreviation") or "").upper(),
         "homeAway": str(competitor.get("homeAway") or ""),
-        "score": str(competitor.get("score") or "—"),
+        "score": str(competitor.get("score") if competitor.get("score") not in (None, "") else "—"),
     }
 
 
@@ -80,65 +77,73 @@ def event_timestamp(event: dict) -> datetime | None:
         return None
 
 
-def normalize_event(event: dict, league: str) -> dict | None:
+def normalize_event(event: dict) -> dict | None:
     timestamp = event_timestamp(event)
     if timestamp is None:
         return None
-    competition = event.get("competitions", [{}])[0]
-    competitors = [team_snapshot(item) for item in competition.get("competitors", [])]
+    competitors = [team_snapshot(item) for item in event.get("competitors", [])]
     if len(competitors) < 2:
         return None
-    status = competition.get("status", {}).get("type", {})
-    state = str(status.get("state") or "pre")
+    status = (event.get("fullStatus") or {}).get("type", {}) or {}
+    state = str(status.get("state") or event.get("status") or "pre")
     completed = bool(status.get("completed", False)) or state == "post"
     home = next((c for c in competitors if c["homeAway"] == "home"), competitors[0])
     away = next((c for c in competitors if c["homeAway"] == "away"), competitors[1])
+    detail = str(status.get("shortDetail") or status.get("detail") or event.get("summary") or "Scheduled")
     return {
         "id": str(event.get("id") or ""),
         "date": timestamp.date().isoformat(),
         "time": timestamp.strftime("%H:%M"),
         "state": state,
         "completed": completed,
-        "status": str(status.get("shortDetail") or status.get("detail") or "Scheduled"),
+        "status": detail,
         "home": home,
         "away": away,
-        "league": str(league or "Football"),
-        "url": f"https://www.espn.com/soccer/match/_/gameId/{event.get('id', '')}",
+        "url": str(event.get("link") or ""),
     }
 
 
-def collect_events(config: dict, now: datetime | None = None, fetcher=fetch_json) -> tuple[list[dict], str]:
-    now = now or datetime.now().astimezone()
-    league = str(config.get("league") or DEFAULT_LEAGUE).strip().lower() or DEFAULT_LEAGUE
-    today = now.date()
-    end = today + timedelta(days=14)
-    url = API_ROOT + "/" + league + "/scoreboard?" + urlencode({"limit": "100", "dates": f"{today:%Y%m%d}-{end:%Y%m%d}"})
-    payload = fetcher(url)
-    league_label = league
-    leagues = payload.get("leagues", [])
-    if leagues and isinstance(leagues[0], dict):
-        league_label = str(leagues[0].get("abbreviation") or leagues[0].get("name") or league)
+def normalize_group(league: dict) -> dict | None:
     events = []
-    for raw_event in payload.get("events", []):
-        item = normalize_event(raw_event, league_label)
+    for raw_event in league.get("events", []) or []:
+        item = normalize_event(raw_event)
         if item:
             events.append(item)
-    events.sort(key=lambda item: item["time"])
-    return events, league
+    if not events:
+        return None
+    events.sort(key=lambda item: (item["time"], item["id"]))
+    return {
+        "league": str(league.get("name") or league.get("slug") or "Competition"),
+        "abbreviation": str(league.get("abbreviation") or ""),
+        "slug": str(league.get("slug") or ""),
+        "events": events,
+    }
+
+
+def collect_groups(day: date_cls, fetcher=fetch_json) -> list[dict]:
+    url = API_ROOT + "?" + urlencode({"sport": "soccer", "dates": f"{day:%Y%m%d}"})
+    payload = fetcher(url)
+    groups = []
+    for sport in payload.get("sports", []) or []:
+        for league in sport.get("leagues", []) or []:
+            group = normalize_group(league)
+            if group:
+                groups.append(group)
+    return groups
 
 
 def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
     try:
-        config = load_config()
-        league = str(config.get("league") or DEFAULT_LEAGUE).strip().lower() or DEFAULT_LEAGUE
+        day = parse_date(args[0] if args else None)
     except Exception as error:
-        json_out(error=str(error), league="", events=[])
+        json_out(error=str(error), date="", groups=[])
         return 0
     try:
-        events, _ = collect_events(config)
-        json_out(updated=datetime.now().astimezone().isoformat(), league=league, events=events, error="")
+        groups = collect_groups(day)
+        json_out(updated=datetime.now().astimezone().isoformat(), date=day.isoformat(), groups=groups, error="")
     except Exception as error:
-        json_out(error=str(error), league=league, events=[])
+        json_out(error=str(error), date=day.isoformat(), groups=[])
     return 0
 
 

@@ -1,17 +1,17 @@
 # Omarchy Football Scores
 
-Live football scores and upcoming fixtures in the [Omarchy](https://omarchy.org/)
-bar, powered by ESPN's public API. No API key required.
+A livescore-style football widget for the [Omarchy](https://omarchy.org/) bar,
+powered by ESPN's public API. No API key required.
 
 ## Features
 
-- Today's matches with live scores, kick-off times and results
-- Fixtures for the week ahead, grouped by day
-- The bar chip lights up while a match is live
-- Tooltip shows the live score or your next fixture
-- Pick your league from 11 options: Premier League, La Liga, Serie A,
-  Bundesliga, Ligue 1, Primeira Liga, Eredivisie, MLS, Champions League,
-  Europa League and the World Cup
+- One day at a time, like livescore.com: every competition that plays that
+  day, grouped under its own header (Premier League, La Liga, Serie A,
+  Bundesliga, MLS, cups and more)
+- Move between days with ‹ › arrows or the clickable day strip, plus a
+  Today shortcut
+- Live scores, kick-off times and results; live competitions are highlighted
+- The bar tooltip shows the live score or the next fixture
 - Middle-click the chip to force a refresh; data auto-refreshes every 60s
 - Click a match row to open it on ESPN
 
@@ -37,11 +37,11 @@ omarchy plugin remove iamstarcode.football
 
 ## How it works
 
-A small Python helper (`football.py`) fetches a 7-day scoreboard window from
-ESPN's public `site.api.espn.com` endpoint for the selected league and
-normalizes it to JSON. `Panel.qml` renders today's matches plus upcoming
-fixtures, refreshing every 60 seconds. Your league choice is stored in
-`~/.config/omarchy/iamstarcode.football.json`.
+A small Python helper (`football.py`) takes a date and fetches that day's
+scoreboard for every soccer competition from ESPN's public
+`site.web.api.espn.com` header endpoint, normalizing it to JSON grouped by
+competition. `Panel.qml` renders the selected day, refreshing every 60
+seconds while matches are on.
 
 ## License
 
