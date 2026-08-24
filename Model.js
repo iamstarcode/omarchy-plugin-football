@@ -99,14 +99,19 @@ function chipLabel(dateStr, now) {
   return WEEKDAYS[d.getDay()] + " " + d.getDate()
 }
 
+// Safe defaults so QML bindings never see undefined on mixed-type rows.
+var EMPTY_ROW = { id: "", date: "", time: "", status: "NS", statusDetail: "",
+  home: "", away: "", homeScore: "-", awayScore: "-", url: "" }
+
 // Flat display list: league headers interleaved with match rows.
+// `alt` marks odd match rows inside a group for zebra shading.
 function buildDisplayRows(groups) {
   var out = []
   for (var i = 0; i < groups.length; i++) {
     var g = groups[i]
-    out.push({ type: "league", label: g.league, live: groupHasLive(g.rows) })
+    out.push({ type: "league", label: g.league, live: groupHasLive(g.rows), row: EMPTY_ROW, alt: false })
     for (var j = 0; j < g.rows.length; j++)
-      out.push({ type: "match", row: g.rows[j] })
+      out.push({ type: "match", label: "", live: false, row: g.rows[j], alt: j % 2 === 1 })
   }
   return out
 }

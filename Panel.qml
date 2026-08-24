@@ -6,8 +6,8 @@ import qs.Ui
 import "Model.js" as Model
 
 // iamstarcode.football — livescore-style popover. One day at a time, grouped
-// by competition, with ‹ › arrows and a day strip to move between dates.
-// Refreshes every 60s from ESPN via football.py.
+// by competition in card blocks, with ‹ › arrows and a day strip to move
+// between dates. Refreshes every 60s from ESPN via football.py.
 Panel {
   id: root
   moduleName: "iamstarcode.football"
@@ -27,6 +27,7 @@ Panel {
   readonly property string tooltipLabel: Model.tooltipLabel(groups)
   readonly property string helperPath: Qt.resolvedUrl("football.py").toString().replace("file://", "")
   readonly property bool viewingToday: selectedDate === Model.todayIso()
+  readonly property string fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
 
   function open() {
     root.controller.show()
@@ -100,7 +101,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(440))
+    contentWidth: panel.fittedContentWidth(Style.space(460))
     contentHeight: panel.fittedContentHeight(scroll.contentHeight)
 
     PanelKeyCatcher {
@@ -122,7 +123,7 @@ Panel {
       Column {
         id: contentColumn
         width: scroll.width
-        spacing: Style.space(8)
+        spacing: Style.space(10)
 
         // Header
         Row {
@@ -135,7 +136,7 @@ Panel {
             Text {
               text: "FOOTBALL · " + Model.dayLabel(root.selectedDate, new Date()).toUpperCase()
               color: Color.accent
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               font.bold: true
               font.letterSpacing: 1.2
@@ -145,7 +146,7 @@ Panel {
             Text {
               text: root.updatedAt !== "" ? "ESPN · updated " + root.updatedAt : "ESPN"
               color: Util.alpha(root.barForeground, 0.5)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.family: root.fontFamily
               font.pixelSize: 9
             }
           }
@@ -181,20 +182,19 @@ Panel {
           }
 
           Row {
-            id: strip
             spacing: Style.space(2)
 
             Repeater {
-              model: 7
+              model: 5
 
               delegate: Button {
                 required property int index
-                readonly property string chipDate: Model.addDays(root.selectedDate, index - 3)
+                readonly property string chipDate: Model.addDays(root.selectedDate, index - 2)
 
                 text: Model.chipLabel(chipDate, new Date())
                 fontSize: Style.font.caption
-                selected: index === 3
-                active: index === 3
+                selected: index === 2
+                active: index === 2
                 bordered: true
                 foreground: root.barForeground
                 accent: Color.accent
@@ -225,34 +225,84 @@ Panel {
 
         Rectangle { width: parent.width; height: 1; color: Util.alpha(Color.accent, 0.4) }
 
-        // Matches grouped by competition
+        // Competition blocks
         Repeater {
           model: root.displayRows
 
           delegate: Item {
             required property var modelData
             width: contentColumn.width
-            height: modelData.type === "league" ? leagueLabel.implicitHeight
+            height: modelData.type === "league" ? leagueHeader.height
                   : modelData.type === "match" ? matchRow.height : 0
 
-            Text {
-              id: leagueLabel
+            // ---- competition header card ----
+            Rectangle {
+              id: leagueHeader
               visible: modelData.type === "league"
-              text: modelData.label.toUpperCase()
-              color: modelData.live ? Color.accent : Util.alpha(root.barForeground, 0.55)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: 10
-              font.bold: true
-              font.letterSpacing: 0.8
+              width: parent.width
+              height: 30
+              radius: Style.cornerRadius
+              color: Util.alpha(root.barForeground, 0.09)
+
+              Rectangle {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: 3
+                height: parent.height
+                radius: 2
+                color: modelData.live ? Color.accent : Util.alpha(Color.accent, 0.35)
+              }
+
+              Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(4)
+                anchors.verticalCenter: parent.verticalCenter
+                text: modelData.label.toUpperCase()
+                color: root.barForeground
+                font.family: root.fontFamily
+                font.pixelSize: 10
+                font.bold: true
+                font.letterSpacing: 1
+                elide: Text.ElideRight
+                width: parent.width - Style.space(8) - liveBadge.width - liveBadgeDot.width
+              }
+
+              Rectangle {
+                id: liveBadgeDot
+                visible: modelData.live
+                anchors.right: liveBadge.left
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                width: 6
+                height: 6
+                radius: 3
+                color: Color.accent
+              }
+
+              Text {
+                id: liveBadge
+                visible: modelData.live
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(4)
+                anchors.verticalCenter: parent.verticalCenter
+                text: "LIVE"
+                color: Color.accent
+                font.family: root.fontFamily
+                font.pixelSize: 9
+                font.bold: true
+                font.letterSpacing: 1
+              }
             }
 
+            // ---- match row ----
             Rectangle {
               id: matchRow
               visible: modelData.type === "match"
               width: parent.width
-              height: 34
+              height: 36
               radius: Style.cornerRadius
-              color: matchArea.containsMouse ? Util.alpha(root.barForeground, 0.07) : "transparent"
+              color: matchArea.containsMouse ? Util.alpha(root.barForeground, 0.07)
+                   : modelData.alt ? Util.alpha(root.barForeground, 0.03) : "transparent"
 
               Row {
                 anchors.fill: parent
@@ -260,12 +310,15 @@ Panel {
                 anchors.rightMargin: Style.space(4)
                 spacing: Style.space(4)
 
+                // status: kick-off time / live detail / FT
                 Text {
-                  width: 52
+                  width: 48
                   anchors.verticalCenter: parent.verticalCenter
                   text: modelData.row.status === "NS" ? modelData.row.time : modelData.row.statusDetail
-                  color: modelData.row.status === "LIVE" ? Color.accent : Util.alpha(root.barForeground, 0.55)
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  color: modelData.row.status === "LIVE" ? Color.accent
+                       : modelData.row.status === "FT" ? Util.alpha(root.barForeground, 0.4)
+                       : Util.alpha(root.barForeground, 0.55)
+                  font.family: root.fontFamily
                   font.pixelSize: 10
                   font.bold: modelData.row.status === "LIVE"
                   horizontalAlignment: Text.AlignLeft
@@ -273,34 +326,50 @@ Panel {
                 }
 
                 Text {
-                  width: (parent.width - 52 - 64 - parent.spacing * 3) / 2
+                  width: (parent.width - 48 - 72 - parent.spacing * 3) / 2
                   anchors.verticalCenter: parent.verticalCenter
                   text: modelData.row.home
-                  color: root.barForeground
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  color: modelData.row.status === "FT" ? Util.alpha(root.barForeground, 0.65) : root.barForeground
+                  font.family: root.fontFamily
                   font.pixelSize: 12
                   font.bold: modelData.row.status === "LIVE"
                   horizontalAlignment: Text.AlignRight
                   elide: Text.ElideRight
                 }
 
-                Text {
-                  width: 64
+                // score chip
+                Rectangle {
+                  width: 72
+                  height: 24
                   anchors.verticalCenter: parent.verticalCenter
-                  text: modelData.row.status === "NS" ? "vs" : modelData.row.homeScore + " - " + modelData.row.awayScore
-                  color: modelData.row.status === "NS" ? Util.alpha(root.barForeground, 0.5) : Color.accent
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
-                  font.pixelSize: 13
-                  font.bold: modelData.row.status !== "NS"
-                  horizontalAlignment: Text.AlignHCenter
+                  radius: Style.cornerRadius
+                  color: modelData.row.status === "NS" ? "transparent"
+                       : modelData.row.status === "LIVE" ? Util.alpha(Color.accent, 0.14)
+                       : Util.alpha(root.barForeground, 0.06)
+
+                  border.width: 1
+                  border.color: modelData.row.status === "LIVE" ? Util.alpha(Color.accent, 0.5) : "transparent"
+
+                  Text {
+                    anchors.fill: parent
+                    text: modelData.row.status === "NS" ? "vs" : modelData.row.homeScore + " - " + modelData.row.awayScore
+                    color: modelData.row.status === "LIVE" ? Color.accent
+                         : modelData.row.status === "FT" ? Util.alpha(root.barForeground, 0.65)
+                         : Util.alpha(root.barForeground, 0.5)
+                    font.family: root.fontFamily
+                    font.pixelSize: 12
+                    font.bold: modelData.row.status === "LIVE"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                  }
                 }
 
                 Text {
-                  width: (parent.width - 52 - 64 - parent.spacing * 3) / 2
+                  width: (parent.width - 48 - 72 - parent.spacing * 3) / 2
                   anchors.verticalCenter: parent.verticalCenter
                   text: modelData.row.away
-                  color: root.barForeground
-                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  color: modelData.row.status === "FT" ? Util.alpha(root.barForeground, 0.65) : root.barForeground
+                  font.family: root.fontFamily
                   font.pixelSize: 12
                   font.bold: modelData.row.status === "LIVE"
                   horizontalAlignment: Text.AlignLeft
@@ -325,7 +394,7 @@ Panel {
           visible: root.groups.length === 0
           text: root.errorMessage !== "" ? root.errorMessage : "No matches on this day."
           color: Util.alpha(root.barForeground, 0.65)
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.family: root.fontFamily
           font.pixelSize: 11
           wrapMode: Text.WordWrap
           textFormat: Text.PlainText
