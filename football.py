@@ -111,7 +111,7 @@ def collect_events(config: dict, now: datetime | None = None, fetcher=fetch_json
     now = now or datetime.now().astimezone()
     league = str(config.get("league") or DEFAULT_LEAGUE).strip().lower() or DEFAULT_LEAGUE
     today = now.date()
-    end = today + timedelta(days=7)
+    end = today + timedelta(days=14)
     url = API_ROOT + "/" + league + "/scoreboard?" + urlencode({"limit": "100", "dates": f"{today:%Y%m%d}-{end:%Y%m%d}"})
     payload = fetcher(url)
     league_label = league

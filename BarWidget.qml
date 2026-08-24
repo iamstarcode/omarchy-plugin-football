@@ -72,14 +72,13 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "\u{f274}"
+    text: "\u{f16ff}"
     fontSize: Style.bar.iconFont
     fixedWidth: Style.bar.iconSlot
     fixedHeight: Style.bar.iconSlot
     labelVisible: true
     tooltipText: root.panelTooltip
     active: root.opened || root.liveNow
-    useActiveColor: true
 
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.MiddleButton) root.refresh()

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "iamstarcode.football",
   "name": "Football Scores",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "iamstarcode",
   "license": "MIT",
   "description": "Live football scores and upcoming fixtures for your chosen league, powered by ESPN's public API.",
